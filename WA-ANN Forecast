@@ -1,0 +1,143 @@
+% WA-ANN Forecast
+
+% This Code was developed using MATLAB R2023a - academic use
+
+% Training the Neural Network using Neural Net Time Series app
+
+% Load Historical Climate and Groundwater Level Data (GWL)
+Instow_monthly_predictors = csvread('Instow_monthly_climate.csv');
+Instow_monthly_response = csvread('Instow_monthly_GWLs.csv');
+
+X = tonndata(Instow_monthly_predictors,false,false);
+T = tonndata(Instow_monthly_response,false,false);
+
+% Set the Random Seed for Reproducibility
+rng(1);
+
+% Select a Training Function
+trainFcn = 'trainbr';  % Bayesian Regularization
+
+% Create a Nonlinear Autoregressive Network with External Input (NARX)
+inputDelays = 1:8;
+feedbackDelays = 1:8;
+hiddenLayerSize = 10;
+nett = narxnet(inputDelays,feedbackDelays,hiddenLayerSize,'open',trainFcn);
+
+% Prepare the Data for Training and Simulation
+[x,xi,ai,t] = preparets(nett,X,{},T);
+
+% Setup Division of Data for Training, Validation, Testing
+nett.divideParam.trainRatio = 70/100;
+nett.divideParam.valRatio = 15/100;
+nett.divideParam.testRatio = 15/100;
+
+% Train the Network
+[nett,tr] = train(nett,x,t,xi,ai);
+
+% Test the Network
+y = nett(x,xi,ai);
+e = gsubtract(t,y);
+performance = perform(nett,t,y)
+
+% View the Network
+view(nett)
+
+% Plots
+figure, plotperform(tr)
+figure, plottrainstate(tr)
+figure, ploterrhist(e)
+figure, plotregression(t,y)
+figure, plotresponse(t,y)
+figure, ploterrcorr(e)
+figure, plotinerrcorr(x,e)
+
+% Closed Loop Network
+netc = closeloop(nett);
+netc.name = [nett.name ' - Closed Loop'];
+view(netc)
+[xc,xic,aic,tc] = preparets(netc,X,{},T);
+yc = netc(xc,xic,aic);
+closedLoopPerformance = perform(nett,tc,yc)
+
+% Step-Ahead Prediction Network
+nets = removedelay(nett);
+nets.name = [nett.name ' - Predict One Step Ahead'];
+view(nets)
+[xs,xis,ais,ts] = preparets(nets,X,{},T);
+ys = nets(xs,xis,ais);
+stepAheadPerformance = perform(nets,ts,ys)
+
+%% Use the Trained Network for Future Forecast
+
+% Load Future Climate Data
+futureClimateData = csvread('future_climate_data_instow.csv');  % Load CSV file
+
+% Specify Lag Time
+lagtime = 7;
+
+% Load the trained neural network
+net = nets;
+
+% Number of Future Predictions
+numPredictions = length(futureClimateData);
+
+% Initialize Arrays to Store Predicted Values
+predictedValues = zeros(numPredictions, 1);
+
+% For Loop for Future Forecasts
+for i = 1:numPredictions
+    % Prepare the Input Data for the Network
+    if i == 1
+        % First Prediction: Use Initial Data
+        Xp = Instow_monthly_predictors(end-lagtime:end, :);
+        Tp = Instow_monthly_response(end-lagtime:end);
+    else
+        % Subsequent Predictions: Use the Predicted Value from the Previous Step
+        Xp = [Xp(2:end, :); futureClimateData(i - 1, :)];
+        Tp = [Tp(2:end, :); predictedValues(i - 1, :)];
+    end
+    
+    % Prepare Input Data for Prediction
+    X_input = tonndata(Xp, false, false);
+    T_input = tonndata(Tp, false, false);
+    
+    [x, xn, an, t] = preparets(net, X_input, {}, T_input);
+    
+    % Prediction of Future GWLs
+    yf = net(x, xn, an);
+    
+    % Store the Predicted Values
+    predictedValues(i) = cell2mat(yf);
+end
+
+% Plot the Forecasted GWLs
+figure;
+plot(Instow_monthly_response, 'b', 'DisplayName', 'Historical Data');
+hold on;
+plot(1:length(Instow_monthly_response) + numPredictions, [Instow_monthly_response; predictedValues], 'r', 'DisplayName', 'Forecasted Data');
+xlabel('Time Steps');
+ylabel('Groundwater Levels');
+title('Groundwater Level Forecast');
+legend('Location', 'northwest');
+grid on;
+
+%% For Noisy Signals (If needed)
+
+% Denoise Signal using the Discrete Wavelet Transform (DWT) through Wavelet Signal Denoiser App
+
+Instow_Denoised_Signal = wdenoise(predictedValues,3, ...
+    Wavelet='db5', ...
+    DenoisingMethod='UniversalThreshold', ...
+    ThresholdRule='Soft', ...
+    NoiseEstimate='LevelDependent');
+
+% Plot the Forecasted GWLs
+figure;
+plot(Instow_monthly_response, 'b', 'DisplayName', 'Historical Data');
+hold on;
+plot(1:length(Instow_monthly_response) + numPredictions, [Instow_monthly_response; Instow_Denoised_Signal], 'r', 'DisplayName', 'Forecasted Data');
+xlabel('Time Steps');
+ylabel('Groundwater Levels');
+title('Groundwater Level Forecast');
+legend('Location', 'northwest');
+grid on;
