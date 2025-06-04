@@ -121,7 +121,7 @@ title('Groundwater Level Forecast');
 legend('Location', 'northwest');
 grid on;
 
-%% For Noisy Signals (If needed)
+%% For Noisy Signals
 
 % Denoise Signal using the Discrete Wavelet Transform (DWT) through Wavelet Signal Denoiser App
 
