@@ -1,0 +1,125 @@
+%% Grid Search for Hyperparameter tuning of the NARX Network
+
+
+% Load Data
+monthly_predictors = csvread('monthly_climate.csv');
+monthly_response = csvread('monthly_GWLs.csv');
+
+
+% Convert to time series
+X = tonndata(monthly_predictors, false, false);
+T = tonndata(monthly_response, false, false);
+
+% Define Grid
+hiddenLayerSizes = [4, 5, 6, 7, 8, 9, 10, 11, 12];          % Number of neurons
+inputDelayOptions = {1:3, 1:4, 1:5, 1:6, 1:7, 1:8, 1:9, 1:10};     % Input delays
+
+% Set Training Function
+trainFcn = 'trainbr'; % Bayesian regularization
+
+% Loop over all combinations
+runID = 1;  
+for hIdx = 1:length(hiddenLayerSizes)
+    hiddenLayerSize = hiddenLayerSizes(hIdx);
+    
+    for dIdx = 1:length(inputDelayOptions)
+        inputDelays = inputDelayOptions{dIdx};
+        feedbackDelays = inputDelays;  % Symmetric delays
+
+        % Create Network
+        nett = narxnet(inputDelays, feedbackDelays, hiddenLayerSize, 'open', trainFcn);
+
+        % Set Data Split
+        nett.divideParam.trainRatio = 70/100;
+        nett.divideParam.valRatio = 10/100;
+        nett.divideParam.testRatio = 20/100;
+        
+
+        % Prepare Data
+        [x, xi, ai, t] = preparets(nett, X, {}, T);
+
+        % Train
+        [nett, tr] = train(nett, x, t, xi, ai);
+
+        % Performance
+        y = nett(x, xi, ai);
+        perf = perform(nett, t, y);
+        fprintf('Run %d: HiddenLayerSize=%d, Delays=%s, Performance=%.4f\n', ...
+            runID, hiddenLayerSize, mat2str(inputDelays), perf);
+
+        % Create Step-Ahead Network
+        nets = removedelay(nett);
+        nets.name = [nett.name ' - Step Ahead'];
+        [xs, xis, ais, ts] = preparets(nets, X, {}, T);
+        ys = nets(xs, xis, ais);
+        stepAheadPerf = perform(nets, ts, ys);
+
+        % Save both Networks
+        filename = sprintf('trainedNetwork_Run%d_Neurons%d_Delays%s.mat', ...
+            runID, hiddenLayerSize, strrep(mat2str(inputDelays), ' ', '_'));
+        save(filename, 'nett', 'nets', 'tr', 'perf', 'stepAheadPerf', 'hiddenLayerSize', 'inputDelays');
+
+        % Print step-ahead performance
+        fprintf('   Step-Ahead Performance=%.4f\n', stepAheadPerf);
+
+        runID = runID + 1;
+    end
+end
+
+
+%% Forecasting using the trained networks
+
+networksDir = 'nets';
+files = dir(fullfile(networksDir, '*.mat'));
+
+% For loop for future predictions
+
+% Load future climate data from CSV file
+futureClimateData = csvread('future_climate_data.csv');  % Load CSV file
+
+% Number of Future Predictions
+numPredictions = length(futureClimateData);
+
+numnets = length(files);
+
+% Initialize arrays to store predicted values
+predictedValues = zeros(numPredictions, numnets);
+
+
+for k = 1:length(files)
+    load(fullfile(networksDir, files(k).name), 'nets'); net = nets;
+    lagtime = max(net.inputWeights{1,1}.delays);
+    fprintf('Using Network: %s\n', files(k).name);
+
+
+    % Loop for making future predictions
+for i = 1:numPredictions
+    % Prepare the input data for the network
+    if i == 1
+        % First prediction: use initial data
+        Xp = monthly_predictors(end-lagtime:end, :);
+        Tp = monthly_response(end-lagtime:end);
+    else
+        % Subsequent predictions: use the predicted value from the previous step
+        Xp = [Xp(2:end, :); futureClimateData(i - 1, :)];
+        Tp = [Tp(2:end, :); predictedValues(i - 1, k)];
+    end
+    
+    % Prepare input data for prediction
+    X_input = tonndata(Xp, false, false);
+    T_input = tonndata(Tp, false, false);
+    
+    [x, xn, an, t] = preparets(net, X_input, {}, T_input);
+    
+    % Make the prediction
+    yf = net(x, xn, an);
+    
+    % Store the predicted value
+    predictedValues(i, k) = cell2mat(yf);
+end
+
+
+end
+
+% save the Predicted Values to a CSV file
+csvwrite('Predicted_GWLs.csv', predictedValues);
