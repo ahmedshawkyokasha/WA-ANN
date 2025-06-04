@@ -1,8 +1,7 @@
-
 % Use the Trained Network for Future Forecast
 
 % Load Future Climate Data
-futureClimateData = csvread('future_climate_data.csv');  % Load CSV file
+futureClimateData = csvread('future_climate_data.csv');
 
 % Specify Lag Time
 lagtime = 7;
@@ -53,23 +52,4 @@ title('Groundwater Level Forecast');
 legend('Location', 'northwest');
 grid on;
 
-%% For Noisy Signals
 
-% Denoise Signal using the Discrete Wavelet Transform (DWT) through Wavelet Signal Denoiser App
-
-Instow_Denoised_Signal = wdenoise(predictedValues,3, ...
-    Wavelet='db5', ...
-    DenoisingMethod='UniversalThreshold', ...
-    ThresholdRule='Soft', ...
-    NoiseEstimate='LevelDependent');
-
-% Plot the Forecasted GWLs
-figure;
-plot(Instow_monthly_response, 'b', 'DisplayName', 'Historical Data');
-hold on;
-plot(1:length(Instow_monthly_response) + numPredictions, [Instow_monthly_response; Instow_Denoised_Signal], 'r', 'DisplayName', 'Forecasted Data');
-xlabel('Time Steps');
-ylabel('Groundwater Levels');
-title('Groundwater Level Forecast');
-legend('Location', 'northwest');
-grid on;
