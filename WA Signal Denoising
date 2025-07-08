@@ -1,5 +1,8 @@
 %% For Noisy Signals
 
+% Load Noisy Signal
+predictedValues = ('noisy_signal.csv');
+
 % Denoise Signal using the Discrete Wavelet Transform (DWT) through Wavelet Signal Denoiser App
 
 Denoised_Signal = wdenoise(predictedValues,3, ...
@@ -8,13 +11,4 @@ Denoised_Signal = wdenoise(predictedValues,3, ...
     ThresholdRule='Soft', ...
     NoiseEstimate='LevelDependent');
 
-% Plot the Forecasted GWLs
-figure;
-plot(monthly_response, 'b', 'DisplayName', 'Historical Data');
-hold on;
-plot(1:length(monthly_response) + numPredictions, [monthly_response; Denoised_Signal], 'r', 'DisplayName', 'Forecasted Data');
-xlabel('Time Steps');
-ylabel('Groundwater Levels');
-title('Groundwater Level Forecast');
-legend('Location', 'northwest');
-grid on;
+
