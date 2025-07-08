@@ -1,0 +1,107 @@
+% Use the Trained Network for Future Forecast
+
+% Load Input Data
+monthly_predictors = csvread('historical_monthly_climate_data.csv');
+monthly_response = csvread('historical_monthly_GWLs.csv');
+
+% Load Future Climate Data
+futureClimateData = csvread('future_climate_data.csv');
+
+% Specify Lag Time
+inputDelays = 1:8;
+feedbackDelays = 1:8;
+
+lagtime = max(inputDelays)-1;
+
+% Load the trained neural network
+net = ('nets.mat');
+
+% Number of Future Predictions
+numPredictions = length(futureClimateData);
+
+% Initialize Arrays to Store Predicted Values
+predictedValues = zeros(numPredictions, 1);
+
+%% NARX Forecast
+
+% For Loop for Future Forecasts
+for i = 1:numPredictions
+    % Prepare the Input Data for the Network
+    if i == 1
+        % First Prediction: Use Initial Data
+        Xp = monthly_predictors(end-lagtime:end, :);
+        Tp = monthly_response(end-lagtime:end);
+    else
+        % Subsequent Predictions: Use the Predicted Value from the Previous Step
+        Xp = [Xp(2:end, :); futureClimateData(i - 1, :)];
+        Tp = [Tp(2:end, :); predictedValues(i - 1, :)];
+    end
+    
+    % Prepare Input Data for Prediction
+    X_input = tonndata(Xp, false, false);
+    T_input = tonndata(Tp, false, false);
+    
+    [x, xn, an, t] = preparets(net, X_input, {}, T_input);
+    
+    % Prediction of Future GWLs
+    yf = net(x, xn, an);
+    
+    % Store the Predicted Values
+    predictedValues(i) = cell2mat(yf);
+end
+
+%% NIO Forecast
+
+% For Loop for Future Forecasts
+for i = 1:numPredictions
+    % Prepare the Input Data for the Network
+    if i == 1
+        % First Prediction: Use Initial Data
+        Xp = monthly_predictors(end-lagtime:end, :);
+        Tp = monthly_response(end-lagtime:end);
+    else
+        % Subsequent Predictions: Use the Predicted Value from the Previous Step
+        Xp = [Xp(2:end, :); futureClimateData(i - 1, :)];
+        Tp = [Tp(2:end, :); predictedValues(i - 1, :)];
+    end
+    
+    % Prepare Input Data for Prediction
+    X_input = tonndata(Xp, false, false);
+    T_input = tonndata(Tp, false, false);
+    
+    [x, xn, an, t] = preparets(net, X_input, T_input);
+    
+    % Prediction of Future GWLs
+    yf = net(x, xn, an);
+    
+    % Store the Predicted Values
+    predictedValues(i) = cell2mat(yf);
+end
+
+%% NAR Forecast
+
+% For Loop for Future Forecasts
+for i = 1:numPredictions
+    % Prepare the Input Data for the Network
+    if i == 1
+        % First Prediction: Use Initial Data
+        Tp = monthly_response(end-lagtime:end);
+    else
+        % Subsequent Predictions: Use the Predicted Value from the Previous Step
+        Tp = [Tp(2:end, :); predictedValues(i - 1, :)];
+    end
+    
+    % Prepare Input Data for Prediction
+    T_input = tonndata(Tp, false, false);
+    
+    [x, xn, an, t] = preparets(net, {}, {}, T_input);
+    
+    % Prediction of Future GWLs
+    yf = net(x, xn, an);
+    
+    % Store the Predicted Values
+    predictedValues(i) = cell2mat(yf);
+end
+
+
+
