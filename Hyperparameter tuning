@@ -1,10 +1,8 @@
 %% Grid Search for Hyperparameter tuning of the NARX Network
 
-
-% Load Data
+% Load Historical Data
 monthly_predictors = csvread('monthly_climate.csv');
 monthly_response = csvread('monthly_GWLs.csv');
-
 
 % Convert to time series
 X = tonndata(monthly_predictors, false, false);
@@ -27,29 +25,29 @@ for hIdx = 1:length(hiddenLayerSizes)
         feedbackDelays = inputDelays;  % Symmetric delays
 
         % Create Network
-        nett = narxnet(inputDelays, feedbackDelays, hiddenLayerSize, 'open', trainFcn);
+        net = narxnet(inputDelays, feedbackDelays, hiddenLayerSize, 'open', trainFcn);
 
         % Set Data Split
-        nett.divideParam.trainRatio = 70/100;
-        nett.divideParam.valRatio = 10/100;
-        nett.divideParam.testRatio = 20/100;
+        net.divideParam.trainRatio = 70/100;
+        net.divideParam.valRatio = 10/100;
+        net.divideParam.testRatio = 20/100;
         
 
         % Prepare Data
-        [x, xi, ai, t] = preparets(nett, X, {}, T);
+        [x, xi, ai, t] = preparets(net, X, {}, T);
 
         % Train
-        [nett, tr] = train(nett, x, t, xi, ai);
+        [net, tr] = train(net, x, t, xi, ai);
 
         % Performance
-        y = nett(x, xi, ai);
-        perf = perform(nett, t, y);
+        y = net(x, xi, ai);
+        perf = perform(net, t, y);
         fprintf('Run %d: HiddenLayerSize=%d, Delays=%s, Performance=%.4f\n', ...
             runID, hiddenLayerSize, mat2str(inputDelays), perf);
 
         % Create Step-Ahead Network
-        nets = removedelay(nett);
-        nets.name = [nett.name ' - Step Ahead'];
+        nets = removedelay(net);
+        nets.name = [net.name ' - Step Ahead'];
         [xs, xis, ais, ts] = preparets(nets, X, {}, T);
         ys = nets(xs, xis, ais);
         stepAheadPerf = perform(nets, ts, ys);
@@ -57,7 +55,7 @@ for hIdx = 1:length(hiddenLayerSizes)
         % Save both Networks
         filename = sprintf('trainedNetwork_Run%d_Neurons%d_Delays%s.mat', ...
             runID, hiddenLayerSize, strrep(mat2str(inputDelays), ' ', '_'));
-        save(filename, 'nett', 'nets', 'tr', 'perf', 'stepAheadPerf', 'hiddenLayerSize', 'inputDelays');
+        save(filename, 'net', 'nets', 'tr', 'perf', 'stepAheadPerf', 'hiddenLayerSize', 'inputDelays');
 
         % Print step-ahead performance
         fprintf('   Step-Ahead Performance=%.4f\n', stepAheadPerf);
@@ -75,7 +73,7 @@ files = dir(fullfile(networksDir, '*.mat'));
 % For loop for future predictions
 
 % Load future climate data from CSV file
-futureClimateData = csvread('future_climate_data.csv');  % Load CSV file
+futureClimateData = csvread('future_climate_data.csv'); 
 
 % Number of Future Predictions
 numPredictions = length(futureClimateData);
@@ -85,12 +83,10 @@ numnets = length(files);
 % Initialize arrays to store predicted values
 predictedValues = zeros(numPredictions, numnets);
 
-
 for k = 1:length(files)
     load(fullfile(networksDir, files(k).name), 'nets'); net = nets;
     lagtime = max(net.inputWeights{1,1}.delays);
     fprintf('Using Network: %s\n', files(k).name);
-
 
     % Loop for making future predictions
 for i = 1:numPredictions
@@ -123,3 +119,39 @@ end
 
 % save the Predicted Values to a CSV file
 csvwrite('Predicted_GWLs.csv', predictedValues);
+
+%% Validation
+
+networksDir = 'F:\narx\';
+files = dir(fullfile(networksDir, '*.mat'));
+
+% Load Predicted Values
+predictedValues = readtable('Predicted_GWLs.csv');
+
+% Initialize metric arrays
+numnets = length(files);
+validationMSEs = zeros(1, numnets);
+validationRs = zeros(1, numnets);
+validationNSEs = zeros(1, numnets);
+validationAICs = zeros(1, numnets);
+
+% Load observed GWLs data from CSV file
+data = readtable('Observed_GWLs.csv');
+
+% Extract actual values for each model
+actual = data.well;
+
+for k = 1:numnets
+
+predicted_model = predictedValues{1:length(actual), k};
+validationMSEs(k) = mean((actual - predicted_model).^2, 'omitnan');
+r_matrix = corrcoef(actual, predicted_model, 'Rows', 'complete');
+validationRs(k) = r_matrix(1,2);
+validationNSEs(k) = 1 - sum((actual - predicted_model).^2, 'omitnan') / sum((actual - mean(actual)).^2, 'omitnan');
+validationAICs(k) = length(actual) * log(sum((actual - predicted_model).^2, 'omitnan') / length(actual)) + 2 * length(predicted_model);
+end
+
+performanceTable = table(validationRs', validationMSEs', validationNSEs', validationAICs', ...
+    'VariableNames', {'R', 'MSE', 'NSE', 'AIC'});
+writetable(performanceTable, 'validation.csv');
+
