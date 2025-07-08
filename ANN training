@@ -14,35 +14,35 @@ X = tonndata(monthly_predictors,false,false);
 T = tonndata(monthly_response,false,false);
 
 % Set the Random Seed for Reproducibility
-rng(1);
+rng(760);
 
 % Select a Training Function
 trainFcn = 'trainbr';  % Bayesian Regularization
 
 % Create the network
-inputDelays = 1:8;
-feedbackDelays = 1:8;
-hiddenLayerSize = 10;
-nett = narxnet(inputDelays,feedbackDelays,hiddenLayerSize,'open',trainFcn);
+inputDelays = 1:7;
+feedbackDelays = 1:7;
+hiddenLayerSize = 7;
+net = narxnet(inputDelays,feedbackDelays,hiddenLayerSize,'open',trainFcn);
 
 % Prepare the Data for Training and Simulation
-[x,xi,ai,t] = preparets(nett,X,{},T);
+[x,xi,ai,t] = preparets(net,X,{},T);
 
 % Setup Division of Data for Training, Validation, Testing
-nett.divideParam.trainRatio = 70/100;
-nett.divideParam.valRatio = 10/100;
-nett.divideParam.testRatio = 20/100;
+net.divideParam.trainRatio = 70/100;
+net.divideParam.valRatio = 10/100;
+net.divideParam.testRatio = 20/100;
 
 % Train the Network
-[nett,tr] = train(nett,x,t,xi,ai);
+[net,tr] = train(net,x,t,xi,ai);
 
 % Test the Network
-y = nett(x,xi,ai);
+y = net(x,xi,ai);
 e = gsubtract(t,y);
-performance = perform(nett,t,y)
+performance = perform(net,t,y)
 
 % View the Network
-view(nett)
+view(net)
 
 % Plots
 figure, plotperform(tr)
@@ -55,7 +55,7 @@ figure, plotinerrcorr(x,e)
 
 % Step-Ahead Prediction Network
 nets = removedelay(nett);
-nets.name = [nett.name ' - Predict One Step Ahead'];
+nets.name = [net.name ' - Predict One Step Ahead'];
 view(nets)
 [xs,xis,ais,ts] = preparets(nets,X,{},T);
 ys = nets(xs,xis,ais);
@@ -67,14 +67,14 @@ X = tonndata(monthly_predictors,false,false);
 T = tonndata(monthly_response,false,false);
 
 % Set the Random Seed for Reproducibility
-rng(2);
+rng(761);
 
 % Choose a Training Function
-trainFcn = 'trainbr';  % Bayesian Regularization
+trainFcn = 'trainlm';  % Levenberg-Marquardt.
 
 % Create a Time Delay Network
-inputDelays = 1:10;
-hiddenLayerSize = 20;
+inputDelays = 1:7;
+hiddenLayerSize = 10;
 net = timedelaynet(inputDelays,hiddenLayerSize,trainFcn);
 
 % Prepare the Data for Training and Simulation
@@ -97,14 +97,13 @@ performance = perform(net,t,y)
 view(net)
 
 % Plots
-% Uncomment these lines to enable various plots.
-%figure, plotperform(tr)
-%figure, plottrainstate(tr)
-%figure, ploterrhist(e)
-%figure, plotregression(t,y)
-%figure, plotresponse(t,y)
-%figure, ploterrcorr(e)
-%figure, plotinerrcorr(x,e)
+figure, plotperform(tr)
+figure, plottrainstate(tr)
+figure, ploterrhist(e)
+figure, plotregression(t,y)
+figure, plotresponse(t,y)
+figure, ploterrcorr(e)
+figure, plotinerrcorr(x,e)
 
 % Step-Ahead Prediction Network
 
@@ -120,10 +119,10 @@ stepAheadPerformance = perform(nets,ts,ys)
 T = tonndata(monthly_response,false,false);
 
 % Set the Random Seed for Reproducibility
-% rng(3);
+ rng(762);
 
 % Choose a Training Function
-trainFcn = 'trainlm';  % Bayesian Regularization backpropagation.
+trainFcn = 'trainlm';  % Levenberg-Marquardt.
 
 % Create the Network
 feedbackDelays = 1:48;
@@ -150,14 +149,13 @@ performance = perform(net,t,y)
 view(net)
 
 % Plots
-% Uncomment these lines to enable various plots.
-%figure, plotperform(tr)
-%figure, plottrainstate(tr)
-%figure, ploterrhist(e)
-%figure, plotregression(t,y)
-%figure, plotresponse(t,y)
-%figure, ploterrcorr(e)
-%figure, plotinerrcorr(x,e)
+figure, plotperform(tr)
+figure, plottrainstate(tr)
+figure, ploterrhist(e)
+figure, plotregression(t,y)
+figure, plotresponse(t,y)
+figure, ploterrcorr(e)
+figure, plotinerrcorr(x,e)
 
 % Step-Ahead Prediction Network
 nets = removedelay(net);
