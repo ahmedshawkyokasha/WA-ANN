@@ -1,0 +1,202 @@
+% Load future climate data
+futureClimateData = csvread('future_climate_data.csv');
+
+% Load historical climate and groundwater level data
+monthly_predictors = csvread('monthly_climate.csv');
+monthly_response = csvread('monthly_GWLs.csv');
+
+% Load Observed GWLs for validation
+data = readtable('observed_GWLs.csv');
+
+% Extract actual values for each model
+ actual = data.well;
+
+X = tonndata(monthly_predictors,false,false);
+T = tonndata(monthly_response,false,false);
+
+% Set the random seed for reproducibility
+ rng(870);
+
+% Choose a Training Function
+trainFcn = 'trainbr';  % Bayesian Regularization backpropagation.
+
+% Loop to generate and train the network multiple times
+numRuns = 20;
+
+% Create a Nonlinear Autoregressive Network with External Input
+inputDelays = 1:7;
+feedbackDelays = 1:7;
+hiddenLayerSize = 7;
+
+% Specify lag time
+lagtime = max(inputDelays)-1;
+
+% Number of future predictions
+  numPredictions = length(futureClimateData);
+
+% Initialize arrays to store predicted values and validation metrics
+
+  trainedNetworks = cell(1, numRuns);
+  validationMSEs = zeros(1, numRuns);
+  validationRs = zeros(1, numRuns);
+  validationNSEs = zeros(1, numRuns);
+  validationAICs = zeros(1, numRuns);
+  predictedValues = zeros(numPredictions, numRuns);
+
+for run = 1:numRuns
+    % Create a Nonlinear Autoregressive Network with External Input
+
+  net = narxnet(inputDelays,feedbackDelays,hiddenLayerSize,'open',trainFcn);
+
+  % Prepare the Data for Training and Simulation
+  [x,xi,ai,t] = preparets(net,X,{},T);
+
+  % Setup Division of Data for Training, Validation, Testing
+  net.divideParam.trainRatio = 70/100;
+  net.divideParam.valRatio = 10/100;
+  net.divideParam.testRatio = 20/100;
+
+% Train the Network
+  [net,tr] = train(net,x,t,xi,ai);
+
+% Test the Network
+  y = net(x,xi,ai);
+  e = gsubtract(t,y);
+  performance = perform(net,t,y);
+
+% View the Network
+ view(net)
+
+% Plots
+figure, plotperform(tr)
+figure, plottrainstate(tr)
+figure, ploterrhist(e)
+figure, plotregression(t,y)
+figure, plotresponse(t,y)
+figure, ploterrcorr(e)
+figure, plotinerrcorr(x,e)
+
+% Step-Ahead Prediction Network
+  nets = removedelay(net);
+  nets.name = [net.name ' - Predict One Step Ahead'];
+ view(nets)
+  [xs,xis,ais,ts] = preparets(nets,X,{},T);
+  ys = nets(xs,xis,ais);
+  stepAheadPerformance = perform(nets,ts,ys);
+
+% Save or store the trained network
+  trainedNetworks{run} = nets;
+
+
+  % Use the trained network fot multistep ahead forecast
+  net = nets;
+
+% Loop for making future predictions
+for i = 1:numPredictions
+    % Prepare the input data for the network
+    if i == 1
+        % First prediction: use initial data
+        Xp = monthly_predictors(end-lagtime:end, :);
+        Tp = monthly_response(end-lagtime:end);
+    else
+        % Subsequent predictions: use the predicted value from the previous step
+        Xp = [Xp(2:end, :); futureClimateData(i - 1, :)];
+        Tp = [Tp(2:end, :); predictedValues(i - 1, run)];
+    end
+    
+    % Prepare input data for prediction
+    X_input = tonndata(Xp, false, false);
+    T_input = tonndata(Tp, false, false);
+    
+    [x, xn, an, t] = preparets(net, X_input, {}, T_input);
+    
+    % Make the prediction
+    yf = net(x, xn, an);
+    
+    % Store the predicted value
+    predictedValues(i,run) = cell2mat(yf);
+
+end
+
+    % Extract the predicted values for validation
+    predicted_model = predictedValues(1:length(actual), run);
+
+    % Calculate evaluation metrics for each run
+    validationMSEs(run) = mean((actual - predicted_model).^2, 'omitnan');
+    r_matrix = corrcoef(actual, predicted_model, 'Rows', 'complete');
+    validationRs(run) = r_matrix(1,2);
+    validationNSEs(run) = 1 - sum((actual - predicted_model).^2, 'omitnan') / sum((actual - mean(actual)).^2, 'omitnan');
+    validationAICs(run) = length(actual) * log(sum((actual - predicted_model).^2, 'omitnan') / length(actual)) + 2 * length(predicted_model);
+end 
+
+%% Ensemble Mean Weighted and Standard Deviation
+
+% Exclude negative NSEs
+positiveIndices = validationNSEs > 0;
+
+% Extract positive NSEs and corresponding models
+validationNSEs_positive = validationNSEs(positiveIndices);
+validationRs_positive = validationRs(positiveIndices);
+validationMSEs_positive = validationMSEs(positiveIndices);
+validationAICs_positive = validationAICs(positiveIndices);
+
+% Calculate Ensemble Weights
+rawWeights = validationNSEs_positive;
+
+weights = rawWeights / sum(rawWeights);
+
+% Weighted Mean Forecast
+weightedMean = predictedValues(:, positiveIndices) * weights';
+
+% Weighted Variance and Prediction Intervals
+diffs = predictedValues(:, positiveIndices) - weightedMean;
+weightedVar = sum((diffs.^2) .* weights, 2);
+weightedStd = sqrt(weightedVar);
+lowerPI = weightedMean - 1.96 * weightedStd;
+upperPI = weightedMean + 1.96 * weightedStd;
+
+% Weighted Performance Metrics
+weighted_r_mean = sum(weights .* validationRs_positive);
+weighted_r_std = sqrt(sum(weights .* (validationRs_positive - weighted_r_mean).^2));
+
+weighted_mse_mean = sum(weights .* validationMSEs_positive);
+weighted_mse_std = sqrt(sum(weights .* (validationMSEs_positive - weighted_mse_mean).^2));
+
+weighted_nse_mean = sum(weights .* validationNSEs_positive);
+weighted_nse_std = sqrt(sum(weights .* (validationNSEs_positive - weighted_nse_mean).^2));
+
+weighted_aic_mean = sum(weights .* validationAICs_positive);
+weighted_aic_std = sqrt(sum(weights .* (validationAICs_positive - weighted_aic_mean).^2));
+
+% Display Summary in Command Window
+fprintf('Weighted Mean R: %.4f ± %.4f\n', weighted_r_mean, weighted_r_std);
+fprintf('Weighted Mean MSE: %.4f ± %.4f\n', weighted_mse_mean, weighted_mse_std);
+fprintf('Weighted Mean NSE: %.4f ± %.4f\n', weighted_nse_mean, weighted_nse_std);
+fprintf('Weighted Mean AIC: %.4f ± %.4f\n', weighted_aic_mean, weighted_aic_std);
+
+%% Bootstrapping for Confidence Interval of Performance Metrics
+
+ciFactor = 1.96;
+nBoot = 1000;
+
+% Bootstrapped confidence intervals of metrics
+metrics = {validationRs_positive, validationMSEs_positive, validationNSEs_positive, validationAICs_positive};
+metric_names = {'r', 'MSE', 'NSE', 'AIC'};
+metric_ci = [];
+
+for j = 1:length(metrics)
+    boot_means = zeros(nBoot,1);
+    data = metrics{j};
+    for b = 1:nBoot
+        resample_idx = randi(length(data), [length(data), 1]);
+        boot_means(b) = mean(data(resample_idx));
+    end
+    mean_val = mean(boot_means);
+    ci_low = prctile(boot_means, 2.5);
+    ci_high = prctile(boot_means, 97.5);
+    metric_ci = [metric_ci; mean_val, ci_low, ci_high];
+end
+
+% Display results
+disp('Bootstrapped 95% Confidence Intervals:');
+disp(array2table(metric_ci, 'VariableNames', {'Mean', 'CI_Low', 'CI_High'}, 'RowNames', metric_names));
