@@ -1,5 +1,8 @@
 % Data Preprocessing
-data = readtable('Well data.csv');
+
+% 1- Instow well preprocessing
+
+data = readtable('Instow Well data.csv');
 
 % Extract Date and GWL data
 dates = data.Date;
@@ -48,3 +51,125 @@ grid on;
 
 % Save the figure as a PNG file
 saveas(gcf, 'complete_hydrograph.png');
+
+%% 2- Shaunavon well preprocessing
+
+data = readtable(Shaunavon Well data.csv');
+
+% Extract Date and GWL data
+dates = data.Date;
+GWL = data.GWL;
+
+% 1- Visual Inspection
+figure;
+plot(dates, GWL);
+title('Shaunavon');
+xlabel('Date (year)');
+ylabel('GWL (m, amsl)');
+grid on;
+
+% Save the figure as a PNG file
+saveas(gcf, 'hydrograph.png');
+
+% 2- Outlier Detection Using Z-score Method
+z_scores = (GWL - mean(GWL, 'omitnan')) / std(GWL, 'omitnan');
+
+% Threshold |z| > 3
+outliers = abs(z_scores) > 3;
+
+% Sum the Number of Outliers
+num_outliers = sum(outliers);
+
+fprintf('Number of outliers found using Z-score: %d\n', num_outliers);
+
+% 3- Missing Value Analysis
+num_missing = sum(ismissing(GWL));
+
+fprintf('Number of missing GWLs: %d\n', num_missing);
+
+% Gap filling using PCHIP Interploation
+GWL = fillmissing(GWL, 'pchip');
+
+% Save the Processed GWLs
+csvwrite('GWL_processed.csv', GWL);
+
+% 4- Plot the Processed GWLs 
+figure;
+plot(dates, GWL);
+title('Hydrograph');
+xlabel('Date (year)');
+ylabel('GWL (m, amsl)');
+grid on;
+
+% Save the figure as a PNG file
+saveas(gcf, 'complete_hydrograph.png');
+
+%% 3- Garden Head well preprocessing
+
+data = readtable('Garden Head Well data.csv');
+
+% Extract Date and GWL data
+dates = data.Date;
+GWL = data.GWL;
+
+% 1- Visual Inspection
+figure;
+plot(dates, GWL);
+title('Garden Head');
+xlabel('Date (year)');
+ylabel('GWL (m, amsl)');
+grid on;
+
+% Save the figure as a PNG file
+saveas(gcf, 'hydrograph.png');
+
+% 2- Outlier Detection Using Z-score Method
+z_scores = (GWL - mean(GWL, 'omitnan')) / std(GWL, 'omitnan');
+
+% Threshold |z| > 3
+outliers = abs(z_scores) > 3;
+
+% Sum the Number of Outliers
+num_outliers = sum(outliers);
+
+fprintf('Number of outliers found using Z-score: %d\n', num_outliers);
+
+% 3- Missing Value Analysis
+num_missing = sum(ismissing(GWL));
+
+fprintf('Number of missing GWLs: %d\n', num_missing);
+
+% Gap filling using PCHIP Interploation
+GWL = fillmissing(GWL, 'pchip');
+
+% Save the Processed GWLs
+csvwrite('GWL_processed.csv', GWL);
+
+% 4- Plot the Processed GWLs 
+figure;
+plot(dates, GWL);
+title('Hydrograph');
+xlabel('Date (year)');
+ylabel('GWL (m, amsl)');
+grid on;
+
+% Save the figure as a PNG file
+saveas(gcf, 'complete_hydrograph.png');
+
+%% Data normalization
+
+climate_data = readtable('climate data.csv');
+
+% Extract precipitation and temperature data
+prcp = data.Precipitation;
+tg = data.Temperature;
+
+% Z-score normalization
+
+prcp_standardized = (prcp - mean(prcp)) ./ std(prcp);
+tg_standardized = (tg - mean(tg)) ./ std(tg);
+
+% Save the standardized data
+
+csvwrite('standardized precipitation.csv', prcp_standardized);
+csvwrite('standardized temperature.csv', tg_standardized);
