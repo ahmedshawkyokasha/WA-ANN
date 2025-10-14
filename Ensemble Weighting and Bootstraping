@@ -15,7 +15,7 @@ X = tonndata(monthly_predictors,false,false);
 T = tonndata(monthly_response,false,false);
 
 % Set the random seed for reproducibility
- rng(860);
+ rng(870);
 
 % Choose a Training Function
 trainFcn = 'trainbr';  % Bayesian Regularization backpropagation.
@@ -46,7 +46,7 @@ lagtime = max(inputDelays)-1;
 for run = 1:numRuns
     % Create a Nonlinear Autoregressive Network with External Input
     % Set the random number generator seed to ensure replicability
-  rng(860+run);
+  rng(870+run);
 
   net = narxnet(inputDelays,feedbackDelays,hiddenLayerSize,'open',trainFcn);
 
