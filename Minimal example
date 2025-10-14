@@ -1,1 +1,55 @@
 % Minimal example from raw data to results
+
+% Data Preprocessing
+
+% 1- Well Preprocessing
+
+data = readtable('Instow Well data.csv');
+
+% Extract Date and GWL data
+dates = data.Date;
+GWL = data.GWL;
+
+% 1- Visual Inspection
+figure;
+plot(dates, GWL);
+title('Instow');
+xlabel('Date (year)');
+ylabel('GWL (m, amsl)');
+grid on;
+
+% Save the figure as a PNG file
+saveas(gcf, 'hydrograph.png');
+
+% 2- Outlier Detection Using Z-score Method
+z_scores = (GWL - mean(GWL, 'omitnan')) / std(GWL, 'omitnan');
+
+% Threshold |z| > 3
+outliers = abs(z_scores) > 3;
+
+% Sum the Number of Outliers
+num_outliers = sum(outliers);
+
+fprintf('Number of outliers found using Z-score: %d\n', num_outliers);
+
+% 3- Missing Value Analysis
+num_missing = sum(ismissing(GWL));
+
+fprintf('Number of missing GWLs: %d\n', num_missing);
+
+% Gap filling using PCHIP Interploation
+GWL = fillmissing(GWL, 'pchip');
+
+% Save the Processed GWLs
+csvwrite('GWL_processed.csv', GWL);
+
+% 4- Plot the Processed GWLs 
+figure;
+plot(dates, GWL);
+title('Hydrograph');
+xlabel('Date (year)');
+ylabel('GWL (m, amsl)');
+grid on;
+
+% Save the figure as a PNG file
+saveas(gcf, 'complete_hydrograph.png');
