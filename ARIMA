@@ -1,0 +1,87 @@
+%% 2- GWL forecast using ARIMA
+
+% 1. Load Data
+data = readtable('GWL.csv');  
+climate_data = readtable('climate_data.csv');
+
+DATE = datetime(climate_data.DATE); 
+GWL = data.GWL_normalized;  
+PRECIP = climate_data.precip; 
+TEMP = climate_data.temp; 
+
+% 2. Data is sorted and monthly
+[DATE, idx] = sort(DATE);
+GWL = GWL(idx);
+
+% Convert to monthly timetable
+TT = timetable(DATE, GWL, PRECIP, TEMP);
+TT = retime(TT, 'monthly', 'mean');
+
+%% 3. Split historical and forecast periods
+trainData = TT(TT.DATE <= datetime(2018,12,1), :);
+trainData = trainData(trainData.DATE >= datetime(1980,7,1), :);
+
+testData  = TT(TT.DATE >= datetime(2019,1,1), :);
+testData  = testData(testData.DATE <= datetime(2023,4,1), :);
+
+% Train the model
+
+yTrain = trainData.GWL(trainData.DATE >= datetime(1980,10,1));
+yTest  = testData.GWL;
+
+% Climate inputs
+Xtrain = [trainData.PRECIP trainData.TEMP];
+Xtest  = [testData.PRECIP testData.TEMP];
+
+%% Check whether the difference in time-seris is stationary or not using Dickey-Fuller
+
+[h,pValue] = adftest(yTrain);
+if h == 0
+    fprintf('Series is non-stationary, differencing needed.\n');
+end
+
+%% Use Autocorrelation (ACF) and partial autocorrelation (PACF) to determine p, d, q
+
+figure; autocorr(yTrain); title('ACF of training data');
+figure; parcorr(yTrain); title('PACF of training data');
+
+%% 3. Define and estimate ARIMA
+
+ model = arima('Constant',0,'ARLags',1,'D',2,'MALags',1);
+
+% model = arima('ARLags',1,'D',1,'MALags',1, ...
+%               'Seasonality',4,'SARLags',1,'SMALags',1, ...
+%               'Constant',0);
+
+EstMdl = estimate(model, yTrain, 'X', Xtrain, 'Display', 'off');
+
+% 4. Forecast
+numSteps = numel(yTest);
+[yForecast, yMSE] = forecast(EstMdl, numSteps, 'Y0', yTrain, 'X0', Xtrain, 'XF', Xtest);
+
+% 5. Evaluation metrics
+yTrue = yTest;
+
+R   = corr(yTrue, yForecast);
+MSE = mean((yTrue - yForecast).^2);
+NSE = 1 - sum((yTrue - yForecast).^2) / sum((yTrue - mean(yTrue)).^2);
+
+% Akaike Information Criterion (AIC)
+residuals = yTrue - yForecast;
+AIC = length(yTrue) * log(sum(residuals.^2, 'omitnan') / length(yTrue)) + 2 * length(yForecast);
+
+fprintf('\nARIMAX(1,1,1) with Precip & Temp:\n');
+fprintf('R   = %.4f\n', R);
+fprintf('MSE = %.4f\n', MSE);
+fprintf('NSE = %.4f\n', NSE);
+fprintf('AIC = %.4f\n', AIC(1));
+
+% 6. Plot
+figure;
+plot(trainData.DATE(4:end), yTrain, 'b', 'LineWidth', 1.2); hold on;
+plot(testData.DATE, yTrue, 'k', 'LineWidth', 1.2);
+plot(testData.DATE, yForecast, 'r-', 'LineWidth', 1.5);
+legend('Training','Observed (Test)','Forecast','Location','Best');
+xlabel('Date'); ylabel('Groundwater Level (m)');
+title('ARIMA(1,2,1) Forecast');
+grid on;
