@@ -2,26 +2,38 @@
 
 % Data Preprocessing
 
-% 1- Well Preprocessing
+% 1. Create Synthetic Raw Data
 
-data = readtable('Instow Well data.csv');
+% Set random seed
 
-% Extract Date and GWL data
-dates = data.Date;
-GWL = data.GWL;
+rng(123);
 
-% 1- Visual Inspection
+n = 100; % 100 time steps
+dates = (1:n)';
+
+% Simulated predictors
+precip = abs(randn(n,1));          % precipitation (always positive)
+temp = 10*sin(dates/10) - 5 + randn(n,1);  % temperature with negative values
+
+% Simulated GWL response (depends on both)
+GWL = 10 - 0.3*precip - 0.2*temp + 0.5*randn(n,1);
+
+% Add missing GWL values
+GWL([15, 16, 27, 28, 29, 40, 41, 58, 59, 60]) = NaN;
+
+% Combine raw data
+raw_data = table(dates, precip, temp, GWL);
+
+%% 1- Visual Inspection
 figure;
 plot(dates, GWL);
-title('Instow');
-xlabel('Date (year)');
+title('Raw GWLs (m)');
+xlabel('Time');
 ylabel('GWL (m, amsl)');
 grid on;
 
-% Save the figure as a PNG file
-saveas(gcf, 'hydrograph.png');
+%% 2- Outlier Detection Using Z-score Method
 
-% 2- Outlier Detection Using Z-score Method
 z_scores = (GWL - mean(GWL, 'omitnan')) / std(GWL, 'omitnan');
 
 % Threshold |z| > 3
@@ -37,19 +49,152 @@ num_missing = sum(ismissing(GWL));
 
 fprintf('Number of missing GWLs: %d\n', num_missing);
 
-% Gap filling using PCHIP Interploation
+% Gap filling using Interploation
 GWL = fillmissing(GWL, 'pchip');
-
-% Save the Processed GWLs
-csvwrite('GWL_processed.csv', GWL);
 
 % 4- Plot the Processed GWLs 
 figure;
 plot(dates, GWL);
-title('Hydrograph');
-xlabel('Date (year)');
+title('Processed GWLs');
+xlabel('Time');
 ylabel('GWL (m, amsl)');
 grid on;
 
-% Save the figure as a PNG file
-saveas(gcf, 'complete_hydrograph.png');
+%% 5- Z-score normalization: (x - mean) / std
+
+input_par = [precip temp];
+mu_input_par = mean(input_par,1);
+sigma_input_par = std(input_par,[],1);
+X_norm = (input_par - mu_input_par) ./ sigma_input_par;
+
+mu_Y = mean(GWL);
+sigma_Y = std(GWL);
+GWL_norm = (GWL - mu_Y) ./ sigma_Y;
+
+%% 6- % ANN Training
+
+% This Code was developed using MATLAB R2023a - academic use
+
+% Training the Neural Network using Neural Net Time Series app
+
+% Create a Nonlinear Autoregressive Network with External Input (NARX)
+
+X = tonndata(X_norm,false,false);
+T = tonndata(GWL_norm,false,false);
+
+% Set the Random Seed for Reproducibility
+rng(760);
+
+% Select a Training Function
+trainFcn = 'trainbr';  % Bayesian Regularization
+
+% Create the network
+inputDelays = 1:7;
+feedbackDelays = 1:7;
+hiddenLayerSize = 7;
+net = narxnet(inputDelays,feedbackDelays,hiddenLayerSize,'open',trainFcn);
+
+% Prepare the Data for Training and Simulation
+[x,xi,ai,t] = preparets(net,X,{},T);
+
+% Setup Division of Data for Training, Validation, Testing
+net.divideParam.trainRatio = 70/100;
+net.divideParam.valRatio = 10/100;
+net.divideParam.testRatio = 20/100;
+
+% Train the Network
+[net,tr] = train(net,x,t,xi,ai);
+
+% Test the Network
+y = net(x,xi,ai);
+e = gsubtract(t,y);
+performance = perform(net,t,y)
+
+% View the Network
+view(net);
+
+% Plots
+figure, plotperform(tr);
+figure, plottrainstate(tr);
+figure, ploterrhist(e);
+figure, plotregression(t,y);
+figure, plotresponse(t,y);
+figure, ploterrcorr(e);
+figure, plotinerrcorr(x,e);
+
+% Step-Ahead Prediction Network
+nets = removedelay(net);
+nets.name = [net.name ' - Predict One Step Ahead'];
+view(nets);
+[xs,xis,ais,ts] = preparets(nets,X,{},T);
+ys = nets(xs,xis,ais);
+stepAheadPerformance = perform(nets,ts,ys)
+
+%% 7. Future Climate Data (next 10 steps)
+n_future = 20;
+future_time = (n+1:n+n_future)';
+
+precip_future = abs(1.1*randn(n_future,1));   
+temp_future   = 10*sin((10+(1:n_future))/10) - 3 + randn(n_future,1);
+temp_future = temp_future(:,1);
+
+% Normalize with training statistics
+Xf = [precip_future temp_future];
+futureClimateData = (Xf - mu_input_par) ./ sigma_input_par;
+
+
+%% 8- Use the Trained Network for Future Forecast
+
+lagtime = max(inputDelays)-1;
+
+% Load the trained neural network
+net = nets;
+
+% Number of Future Predictions
+numPredictions = length(futureClimateData);
+
+% Initialize Arrays to Store Predicted Values
+predictedValues = zeros(numPredictions, 1);
+
+% GWL Forecast
+
+% For Loop for Future Forecasts
+for i = 1:numPredictions
+    % Prepare the Input Data for the Network
+    if i == 1
+        % First Prediction: Use Initial Data
+        Xp = X_norm(end-lagtime:end, :);
+        Tp = GWL_norm(end-lagtime:end);
+    else
+        % Subsequent Predictions: Use the Predicted Value from the Previous Step
+        Xp = [Xp(2:end, :); futureClimateData(i - 1, :)];
+        Tp = [Tp(2:end, :); predictedValues(i - 1, :)];
+    end
+    
+    % Prepare Input Data for Prediction
+    X_input = tonndata(Xp, false, false);
+    T_input = tonndata(Tp, false, false);
+    
+    [x, xn, an, t] = preparets(net, X_input, {}, T_input);
+    
+    % Prediction of Future GWLs
+    yf = net(x, xn, an);
+    
+    % Store the Predicted Values
+    predictedValues(i) = cell2mat(yf);
+end
+
+% Denormalize predicted future GWL
+
+predictedValues = predictedValues * sigma_Y + mu_Y;
+
+% Plot the forecasted groundwater levels
+figure;
+plot(1:length(GWL) + numPredictions, [GWL; predictedValues], 'r', 'DisplayName', 'Forecasted Data');
+hold on;
+plot(GWL, 'b', 'DisplayName', 'Historical Data');
+xlabel('Time');
+ylabel('GWL (m, amsl)');
+title('GWLs Forecast');
+legend('Location', 'northwest');
+grid on;
