@@ -42,21 +42,21 @@ e = gsubtract(t,y);
 performance = perform(net,t,y)
 
 % View the Network
-view(net)
+view(net);
 
 % Plots
-figure, plotperform(tr)
-figure, plottrainstate(tr)
-figure, ploterrhist(e)
-figure, plotregression(t,y)
-figure, plotresponse(t,y)
-figure, ploterrcorr(e)
-figure, plotinerrcorr(x,e)
+figure, plotperform(tr);
+figure, plottrainstate(tr);
+figure, ploterrhist(e);
+figure, plotregression(t,y);
+figure, plotresponse(t,y);
+figure, ploterrcorr(e);
+figure, plotinerrcorr(x,e);
 
 % Step-Ahead Prediction Network
-nets = removedelay(nett);
+nets = removedelay(net);
 nets.name = [net.name ' - Predict One Step Ahead'];
-view(nets)
+view(nets);
 [xs,xis,ais,ts] = preparets(nets,X,{},T);
 ys = nets(xs,xis,ais);
 stepAheadPerformance = perform(nets,ts,ys)
@@ -94,22 +94,22 @@ e = gsubtract(t,y);
 performance = perform(net,t,y)
 
 % View the Network
-view(net)
+view(net);
 
 % Plots
-figure, plotperform(tr)
-figure, plottrainstate(tr)
-figure, ploterrhist(e)
-figure, plotregression(t,y)
-figure, plotresponse(t,y)
-figure, ploterrcorr(e)
-figure, plotinerrcorr(x,e)
+figure, plotperform(tr);
+figure, plottrainstate(tr);
+figure, ploterrhist(e);
+figure, plotregression(t,y);
+figure, plotresponse(t,y);
+figure, ploterrcorr(e);
+figure, plotinerrcorr(x,e);
 
 % Step-Ahead Prediction Network
 
 nets = removedelay(net);
 nets.name = [net.name ' - Predict One Step Ahead'];
-view(nets)
+view(nets);
 [xs,xis,ais,ts] = preparets(nets,X,T);
 ys = nets(xs,xis,ais);
 stepAheadPerformance = perform(nets,ts,ys)
@@ -146,21 +146,21 @@ e = gsubtract(t,y);
 performance = perform(net,t,y)
 
 % View the Network
-view(net)
+view(net);
 
 % Plots
-figure, plotperform(tr)
-figure, plottrainstate(tr)
-figure, ploterrhist(e)
-figure, plotregression(t,y)
-figure, plotresponse(t,y)
-figure, ploterrcorr(e)
-figure, plotinerrcorr(x,e)
+figure, plotperform(tr);
+figure, plottrainstate(tr);
+figure, ploterrhist(e);
+figure, plotregression(t,y);
+figure, plotresponse(t,y);
+figure, ploterrcorr(e);
+figure, plotinerrcorr(x,e);
 
 % Step-Ahead Prediction Network
 nets = removedelay(net);
 nets.name = [net.name ' - Predict One Step Ahead'];
-view(nets)
+view(nets);
 [xs,xis,ais,ts] = preparets(nets,{},{},T);
 ys = nets(xs,xis,ais);
 stepAheadPerformance = perform(nets,ts,ys)
